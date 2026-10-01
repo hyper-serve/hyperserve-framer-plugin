@@ -1,52 +1,34 @@
-import { framer, type CanvasNode, useIsAllowedTo } from "@framer/plugin";
-import { useState, useEffect } from "react";
-import "./App.css";
-
-framer.showUI({
-	position: "top right",
-	width: 240,
-	height: 95,
-});
-
-function useSelection() {
-	const [selection, setSelection] = useState<CanvasNode[]>([]);
-
-	useEffect(() => {
-		return framer.subscribeToSelection(setSelection);
-	}, []);
-
-	return selection;
-}
+import { useState } from "react";
+import "./styles.css";
+import { keyStore } from "./keyStore";
+import { ConnectScreen } from "./screens/ConnectScreen";
+import { LibraryScreen } from "./screens/LibraryScreen";
 
 export function App() {
-	const selection = useSelection();
-	const isAllowed = useIsAllowedTo("addSVG");
-	const layer = selection.length === 1 ? "layer" : "layers";
+	const [apiKey, setApiKey] = useState<string | null>(() => keyStore.get());
+	const [notice, setNotice] = useState<string>();
 
-	const handleAddSvg = async () => {
-		await framer.addSVG({
-			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path fill="#999" d="M20 0v8h-8L4 0ZM4 8h8l8 8h-8v8l-8-8Z"/></svg>`,
-			name: "Logo.svg",
-		});
-	};
+	if (apiKey === null) {
+		return (
+			<ConnectScreen
+				notice={notice}
+				onConnected={(key) => {
+					keyStore.set(key);
+					setNotice(undefined);
+					setApiKey(key);
+				}}
+			/>
+		);
+	}
 
 	return (
-		<main>
-			<p>
-				Welcome! Check out the{" "}
-				<a href="https://framer.com/developers/plugins/introduction" target="_blank" rel="noopener">
-					Docs
-				</a>{" "}
-				to start. You have {selection.length} {layer} selected.
-			</p>
-			<button
-				type="button"
-				className="framer-button-primary"
-				onClick={handleAddSvg}
-				disabled={!isAllowed}
-			>
-				Insert Logo
-			</button>
-		</main>
+		<LibraryScreen
+			apiKey={apiKey}
+			onDisconnected={(reason) => {
+				keyStore.clear();
+				setNotice(reason);
+				setApiKey(null);
+			}}
+		/>
 	);
 }
