@@ -1,5 +1,10 @@
 import type { VideoResult } from "@hyperserve/hyperserve-js";
-import { type ComponentInstanceNode, framer, isComponentInstanceNode } from "@framer/plugin";
+import {
+	type ComponentInstanceNode,
+	type DragCompleteResult,
+	framer,
+	isComponentInstanceNode,
+} from "@framer/plugin";
 import { VIDEO_MODULE_URL, videoControls } from "../config";
 import { pickPlaybackResolution } from "./playback";
 
@@ -29,4 +34,13 @@ export const hyperserveVideoIdOf = async (node: unknown) => {
 
 export const switchResolution = async (node: ComponentInstanceNode, url: string) => {
 	await node.setAttributes({ controls: videoControls(url) });
+};
+
+// A drag onto the canvas completes asynchronously with only a node id, so we
+// look the node up and tag it the same way insertVideo tags an inserted one.
+export const tagDroppedNode = async (result: DragCompleteResult, videoId: string): Promise<void> => {
+	if (result.status !== "success") return;
+	const node = await framer.getNode(result.nodeId);
+	if (!isComponentInstanceNode(node)) return;
+	await node.setPluginData(VIDEO_ID_KEY, videoId);
 };

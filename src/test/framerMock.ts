@@ -46,6 +46,7 @@ export const createFramerMock = () => {
 				return node;
 			},
 		),
+		getNode: vi.fn(async (id: string) => inserted.find((n) => n.id === id) ?? null),
 		makeDraggable: vi.fn(() => () => {}),
 		subscribeToSelection: vi.fn((listener: (nodes: unknown[]) => void) => {
 			selectionListener = listener;

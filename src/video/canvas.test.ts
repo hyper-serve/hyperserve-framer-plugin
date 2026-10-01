@@ -8,7 +8,8 @@ vi.mock("@framer/plugin", () => ({
 	isComponentInstanceNode: (n: { __type?: string } | null) => n?.__type === "ComponentInstanceNode",
 }));
 
-const { dragDataFor, hyperserveVideoIdOf, insertVideo, switchResolution, VIDEO_ID_KEY } = await import("./canvas");
+const { dragDataFor, hyperserveVideoIdOf, insertVideo, switchResolution, tagDroppedNode, VIDEO_ID_KEY } =
+	await import("./canvas");
 const { videoControls } = await import("../config");
 
 const ready: VideoResult = {
@@ -61,5 +62,27 @@ describe("canvas helpers", () => {
 		const node = makeNode({ controls: videoControls("https://cdn.test/720p.mp4") });
 		await switchResolution(node as never, "https://cdn.test/1080p.mp4");
 		expect(node.setAttributes).toHaveBeenCalledWith({ controls: videoControls("https://cdn.test/1080p.mp4") });
+	});
+
+	it("tags a successfully dropped layer so it's recognised afterwards", async () => {
+		const node = makeNode({ id: "dropped-1" });
+		framer.inserted.push(node);
+
+		await tagDroppedNode({ status: "success", nodeId: "dropped-1" }, "v1");
+
+		expect(await hyperserveVideoIdOf(node)).toBe("v1");
+	});
+
+	it("does nothing when the drag errored", async () => {
+		const node = makeNode({ id: "dropped-2" });
+		framer.inserted.push(node);
+
+		await tagDroppedNode({ status: "error", reason: "cancelled" }, "v1");
+
+		expect(await hyperserveVideoIdOf(node)).toBeNull();
+	});
+
+	it("does nothing for a node id it can't find", async () => {
+		await expect(tagDroppedNode({ status: "success", nodeId: "missing" }, "v1")).resolves.toBeUndefined();
 	});
 });
