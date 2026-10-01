@@ -1,0 +1,38 @@
+{
+  "name": "hyperserve-framer-plugin",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "biome lint src",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "pack": "npx framer-plugin-tools@1.2.2 pack"
+  },
+  "dependencies": {
+    "@framer/plugin": "^5.1.0",
+    "@hyperserve/hyperserve-js": "file:vendor/hyperserve-js-list-videos-c1d6344.tgz",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.6",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "@testing-library/user-event": "^14",
+    "@types/node": "^22",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^6",
+    "@vitest/coverage-v8": "^3",
+    "jsdom": "^25",
+    "typescript": "^5.9",
+    "vite": "^8",
+    "vite-plugin-framer": "^1.1.0",
+    "vite-plugin-mkcert": "^1",
+    "vitest": "^3"
+  }
+}
