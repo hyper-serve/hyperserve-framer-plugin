@@ -99,4 +99,32 @@ describe("waitForApproval", () => {
 			waitForApproval(session, { signal: new AbortController().signal, fetch: fetchFn, sleep: noSleep, now: () => 0 }),
 		).resolves.toEqual({ kind: "connected", apiKey: "k" });
 	});
+
+	it("resolves promptly when the real default sleep is aborted mid-wait", async () => {
+		vi.useFakeTimers();
+		try {
+			const controller = new AbortController();
+			const fetchFn = vi.fn(async () => reply(202, { status: "pending" }));
+
+			const resultPromise = waitForApproval(session, {
+				signal: controller.signal,
+				fetch: fetchFn,
+				now: () => 0,
+			});
+
+			// Let the first poll resolve and the loop reach the real sleep's
+			// setTimeout before cancelling. No fake timer is ever advanced:
+			// if abort didn't resolve the sleep promptly, this would hang.
+			for (let i = 0; i < 5; i++) {
+				await Promise.resolve();
+			}
+
+			controller.abort();
+
+			await expect(resultPromise).resolves.toEqual({ kind: "cancelled" });
+			expect(fetchFn).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

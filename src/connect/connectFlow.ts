@@ -15,11 +15,17 @@ export type ConnectResult =
 
 const sleepFor = (ms: number, signal: AbortSignal) =>
 	new Promise<void>((resolve) => {
-		const timer = setTimeout(resolve, ms);
-		signal.addEventListener("abort", () => {
+		const onAbort = () => {
 			clearTimeout(timer);
 			resolve();
-		});
+		};
+		// Remove the listener once the timer fires normally so a long poll
+		// doesn't stack one abort listener per tick on the same signal.
+		const timer = setTimeout(() => {
+			signal.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		signal.addEventListener("abort", onAbort, { once: true });
 	});
 
 export async function startConnect(deps: { fetch?: typeof fetch; baseUrl?: string } = {}) {
@@ -59,6 +65,7 @@ export async function waitForApproval(
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ pollSecret: session.pollSecret }),
+				signal: deps.signal,
 			});
 			if (deps.signal.aborted) break;
 			if (res.status === 200) {
@@ -67,7 +74,9 @@ export async function waitForApproval(
 			}
 			if (res.status === 410 || res.status === 404) return { kind: "denied_or_expired" };
 		} catch {
-			// A dropped request while polling: try again next tick.
+			// A dropped request while polling, or the in-flight claim aborted by
+			// Cancel: if it was the cancel, stop; otherwise try again next tick.
+			if (deps.signal.aborted) break;
 		}
 
 		await sleep(deps.intervalMs ?? 2_000, deps.signal);
