@@ -10,14 +10,13 @@
     "lint": "biome lint src",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "pack": "npx framer-plugin-tools@latest pack"
+    "pack": "npx framer-plugin-tools@1.2.2 pack"
   },
   "dependencies": {
     "@framer/plugin": "^5.1.0",
     "@hyperserve/hyperserve-js": "file:vendor/hyperserve-js-list-videos-c1d6344.tgz",
     "react": "^18",
-    "react-dom": "^18",
-    "vite-plugin-mkcert": "^1"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.6",
@@ -33,6 +32,7 @@
     "typescript": "^5.9",
     "vite": "^8",
     "vite-plugin-framer": "^1.1.0",
+    "vite-plugin-mkcert": "^1",
     "vitest": "^3"
   }
 }

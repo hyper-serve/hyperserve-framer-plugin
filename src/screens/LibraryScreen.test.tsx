@@ -1,4 +1,4 @@
-import { HyperserveValidationError } from "@hyperserve/hyperserve-js";
+import { HyperserveNotFoundError, HyperserveValidationError } from "@hyperserve/hyperserve-js";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -248,5 +248,62 @@ describe("LibraryScreen", () => {
 	it("says when this project uses its own account", async () => {
 		render(<LibraryScreen apiKey="k" overridden onDisconnected={vi.fn()} onUseDifferentAccount={vi.fn()} />);
 		expect(await screen.findByText("This project uses its own Hyperserve account.")).toBeInTheDocument();
+	});
+
+	it("drops a tagged selection silently when its video can't be found, without a banner or disconnecting", async () => {
+		client.getVideo.mockRejectedValue(new HyperserveNotFoundError("Video not found"));
+		const onDisconnected = vi.fn();
+		render(<LibraryScreen apiKey="k" overridden={false} onDisconnected={onDisconnected} onUseDifferentAccount={vi.fn()} />);
+		await screen.findByText("a.mp4");
+
+		await act(async () => {
+			framer.select([makeNode({ pluginData: { [VIDEO_ID_KEY]: "gone" } })]);
+			await Promise.resolve();
+		});
+
+		await waitFor(() => expect(client.getVideo).toHaveBeenCalledWith("gone"));
+		expect(screen.queryByRole("combobox", { name: "Resolution" })).toBeNull();
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(onDisconnected).not.toHaveBeenCalled();
+	});
+
+	it("resets the resolution panel when the selection moves to a different node with the same video", async () => {
+		client.getVideo.mockResolvedValue({
+			id: "a",
+			status: "ready",
+			isPublic: true,
+			resolutions: {
+				"720p": { id: "r1", status: "ready", videoUrl: "https://cdn.test/a-720p.mp4", thumbnailImageUrls: [] },
+				"1080p": { id: "r2", status: "ready", videoUrl: "https://cdn.test/a-1080p.mp4", thumbnailImageUrls: [] },
+			},
+		});
+		render(<LibraryScreen apiKey="k" overridden={false} onDisconnected={vi.fn()} onUseDifferentAccount={vi.fn()} />);
+		await screen.findByText("a.mp4");
+
+		await act(async () => {
+			framer.select([
+				makeNode({ id: "node-a", pluginData: { [VIDEO_ID_KEY]: "a" }, controls: { srcType: "URL", srcUrl: "https://cdn.test/a-720p.mp4" } }),
+			]);
+			await Promise.resolve();
+		});
+		expect(await screen.findByRole("combobox", { name: "Resolution" })).toHaveValue("https://cdn.test/a-720p.mp4");
+
+		await act(async () => {
+			framer.select([
+				makeNode({ id: "node-b", pluginData: { [VIDEO_ID_KEY]: "a" }, controls: { srcType: "URL", srcUrl: "https://cdn.test/a-1080p.mp4" } }),
+			]);
+			await Promise.resolve();
+		});
+		expect(await screen.findByRole("combobox", { name: "Resolution" })).toHaveValue("https://cdn.test/a-1080p.mp4");
+	});
+
+	it("doesn't insert and notifies when the project disallows editing", async () => {
+		framer.isAllowedTo.mockReturnValueOnce(false);
+		render(<LibraryScreen apiKey="k" overridden={false} onDisconnected={vi.fn()} onUseDifferentAccount={vi.fn()} />);
+
+		await userEvent.click(await screen.findByRole("button", { name: "Insert a.mp4" }));
+
+		expect(framer.notify).toHaveBeenCalledWith("You can't edit this project.", { variant: "error" });
+		expect(framer.addComponentInstance).not.toHaveBeenCalled();
 	});
 });

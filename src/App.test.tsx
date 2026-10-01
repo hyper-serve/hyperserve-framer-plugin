@@ -22,7 +22,10 @@ vi.mock("./screens/LibraryScreen", () => ({
 			<p>{`apiKey:${apiKey}`}</p>
 			<p>{`overridden:${overridden}`}</p>
 			<button type="button" onClick={() => onDisconnected("Your connection was removed. Connect again.")}>
-				library
+				revoked
+			</button>
+			<button type="button" onClick={() => onDisconnected()}>
+				disconnect
 			</button>
 			<button type="button" onClick={onUseDifferentAccount}>
 				use a different account
@@ -62,10 +65,47 @@ describe("App", () => {
 		render(<App />);
 		await screen.findByText("apiKey:k1");
 
-		await userEvent.click(screen.getByRole("button", { name: "library" }));
+		await userEvent.click(screen.getByRole("button", { name: "revoked" }));
 
 		expect(await screen.findByText("Your connection was removed. Connect again.")).toBeInTheDocument();
 		expect(keyStore.keyFor("p1")).toBeNull();
+	});
+
+	it("drops straight back to the Library on the default account when only this project's override is revoked", async () => {
+		localStorage.setItem("hyperserve.accounts", JSON.stringify({ default: "k1", projects: { p1: "k2" } }));
+		render(<App />);
+		expect(await screen.findByText("apiKey:k2")).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: "revoked" }));
+
+		expect(await screen.findByText("apiKey:k1")).toBeInTheDocument();
+		expect(screen.queryByText("Your connection was removed. Connect again.")).toBeNull();
+		expect(keyStore.keyFor("p2")).toBe("k1");
+	});
+
+	it("drops straight back to the Library on the default account when disconnecting this project's override", async () => {
+		localStorage.setItem("hyperserve.accounts", JSON.stringify({ default: "k1", projects: { p1: "k2" } }));
+		render(<App />);
+		expect(await screen.findByText("apiKey:k2")).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: "disconnect" }));
+
+		expect(await screen.findByText("apiKey:k1")).toBeInTheDocument();
+		expect(keyStore.keyFor("p2")).toBe("k1");
+	});
+
+	it("backs out of connecting a different account to the Library on the previous key", async () => {
+		localStorage.setItem("hyperserve.accounts", JSON.stringify({ default: "k1", projects: {} }));
+		render(<App />);
+		await screen.findByText("apiKey:k1");
+
+		await userEvent.click(screen.getByRole("button", { name: "use a different account" }));
+		await screen.findByText("Connect a different account for this project");
+
+		await userEvent.click(screen.getByRole("button", { name: "Back" }));
+
+		expect(await screen.findByText("apiKey:k1")).toBeInTheDocument();
+		expect(keyStore.keyFor("p1")).toBe("k1");
 	});
 
 	it("lets this project use a different account without changing the others", async () => {

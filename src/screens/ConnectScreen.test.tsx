@@ -86,4 +86,48 @@ describe("ConnectScreen", () => {
 		render(<ConnectScreen onConnected={vi.fn()} notice="Your connection was removed. Connect again." />);
 		expect(screen.getByText("Your connection was removed. Connect again.")).toBeInTheDocument();
 	});
+
+	it("offers a way back when the caller gives one, and uses it", async () => {
+		const onCancel = vi.fn();
+		render(<ConnectScreen onConnected={vi.fn()} onCancel={onCancel} />);
+
+		await userEvent.click(screen.getByRole("button", { name: "Back" }));
+		expect(onCancel).toHaveBeenCalled();
+	});
+
+	it("has no way back when the caller gives none", () => {
+		render(<ConnectScreen onConnected={vi.fn()} />);
+		expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+	});
+
+	it("masks the pasted API key", async () => {
+		render(<ConnectScreen onConnected={vi.fn()} />);
+		await userEvent.click(screen.getByRole("button", { name: "Use an API key instead" }));
+		expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
+	});
+
+	it("maps a network failure starting the connection to a readable message", async () => {
+		startConnect.mockRejectedValue(new TypeError("Failed to fetch"));
+		render(<ConnectScreen onConnected={vi.fn()} />);
+
+		await userEvent.click(screen.getByRole("button", { name: "Connect Hyperserve" }));
+
+		expect(await screen.findByText("Can't reach Hyperserve. Check your connection.")).toBeInTheDocument();
+	});
+
+	it("aborts the claim poll when the screen unmounts", async () => {
+		let capturedSignal: AbortSignal | undefined;
+		waitForApproval.mockImplementation((_s, { signal }: { signal: AbortSignal }) => {
+			capturedSignal = signal;
+			return new Promise(() => {});
+		});
+		const { unmount } = render(<ConnectScreen onConnected={vi.fn()} />);
+
+		await userEvent.click(screen.getByRole("button", { name: "Connect Hyperserve" }));
+		await screen.findByRole("button", { name: "Cancel" });
+
+		unmount();
+
+		expect(capturedSignal?.aborted).toBe(true);
+	});
 });

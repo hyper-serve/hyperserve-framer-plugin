@@ -40,6 +40,7 @@ export const createFramerMock = () => {
 		showUI: vi.fn(async () => {}),
 		getCurrentUser: vi.fn(async () => ({ id: "user-1", name: "Test User" })),
 		getProjectInfo: vi.fn(async () => ({ id: "project-1", name: "Test Project" })),
+		isAllowedTo: vi.fn(() => true),
 		notify: vi.fn(async () => "timeoutReached"),
 		addComponentInstance: vi.fn(
 			async ({ attributes }: { url: string; attributes?: { controls?: Record<string, unknown> } }) => {

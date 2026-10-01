@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DASHBOARD_URL } from "../config";
 import { type ConnectSession, startConnect, waitForApproval } from "../connect/connectFlow";
 
@@ -16,6 +16,15 @@ export function ConnectScreen({ onConnected, notice, integrationUserId, heading,
 	const [pasting, setPasting] = useState(false);
 	const [pasted, setPasted] = useState("");
 	const abort = useRef<AbortController | null>(null);
+
+	// Leaving the screen (approved elsewhere, or the plugin window closing)
+	// must not let a background poll keep running or call back into an
+	// unmounted component; same pattern as UploadPanel's upload abort.
+	useEffect(() => {
+		return () => {
+			abort.current?.abort();
+		};
+	}, []);
 
 	const connect = async () => {
 		setMessage(undefined);
@@ -38,7 +47,8 @@ export function ConnectScreen({ onConnected, notice, integrationUserId, heading,
 			if (result.kind === "cancelled") onCancel?.();
 		} catch (error) {
 			setWaiting(null);
-			setMessage(error instanceof Error ? error.message : "Couldn't connect. Try again.");
+			if (error instanceof TypeError) setMessage("Can't reach Hyperserve. Check your connection.");
+			else setMessage(error instanceof Error ? error.message : "Couldn't connect. Try again.");
 		}
 	};
 
@@ -60,6 +70,11 @@ export function ConnectScreen({ onConnected, notice, integrationUserId, heading,
 
 	return (
 		<main className="stack">
+			{onCancel !== undefined && (
+				<button type="button" className="link" onClick={onCancel}>
+					Back
+				</button>
+			)}
 			<h1>{heading ?? "Hyperserve"}</h1>
 			<p>Upload videos or pick ones you already host, and place them on your page.</p>
 			{message !== undefined && <p role="status">{message}</p>}
@@ -82,7 +97,7 @@ export function ConnectScreen({ onConnected, notice, integrationUserId, heading,
 				>
 					<label>
 						API key
-						<input value={pasted} onChange={(e) => setPasted(e.target.value)} autoComplete="off" />
+						<input type="password" value={pasted} onChange={(e) => setPasted(e.target.value)} autoComplete="off" />
 					</label>
 					<button type="submit">Save key</button>
 				</form>

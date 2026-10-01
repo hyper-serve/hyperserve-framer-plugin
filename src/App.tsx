@@ -63,6 +63,16 @@ export function App() {
 				onUseDifferentAccount={() => setMode("connect-project")}
 				onDisconnected={(reason) => {
 					keyStore.disconnect(projectId);
+					// Disconnecting an override (explicitly, or because it was the one
+					// revoked) only clears that project's own key; if the default
+					// account still works here, drop straight back into the Library
+					// on it instead of making the user reconnect.
+					const fallbackKey = keyStore.keyFor(projectId);
+					if (fallbackKey !== null) {
+						setApiKey(fallbackKey);
+						setMode("library");
+						return;
+					}
 					setApiKey(null);
 					setNotice(reason);
 					setMode("connect-default");

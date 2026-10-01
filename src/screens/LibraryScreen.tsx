@@ -102,7 +102,15 @@ export function LibraryScreen({ apiKey, overridden, onDisconnected, onUseDiffere
 				if (!cancelled) setSelectedVideo(video);
 			})
 			.catch((error) => {
-				if (!cancelled) handleError(error);
+				if (cancelled) return;
+				// A layer tagged by a collaborator with a video from an account we
+				// can't see, or one since deleted: drop the panel quietly rather
+				// than alarming the user or disconnecting them over it.
+				if (toPluginError(error).kind === "not_found") {
+					setSelectedVideo(null);
+					return;
+				}
+				handleError(error);
 			});
 		return () => {
 			cancelled = true;
@@ -140,6 +148,10 @@ export function LibraryScreen({ apiKey, overridden, onDisconnected, onUseDiffere
 	};
 
 	const insert = async (listed: ListedVideo) => {
+		if (!framer.isAllowedTo("addComponentInstance")) {
+			await framer.notify("You can't edit this project.", { variant: "error" });
+			return;
+		}
 		try {
 			const video = await cacheVideo(listed.id);
 			await insertVideo(video);
@@ -202,7 +214,10 @@ export function LibraryScreen({ apiKey, overridden, onDisconnected, onUseDiffere
 			{banner?.kind === "unknown" && <p role="alert">{banner.message}</p>}
 
 			{selection !== null && selectedVideo !== null && (
-				<SelectedVideoPanel key={selection.videoId} node={selection.node} video={selectedVideo} />
+				// Keyed by the node, not the video id: two different layers can
+				// reference the same video, and each must get its own panel state
+				// (the chosen resolution) rather than reusing a stale instance.
+				<SelectedVideoPanel key={selection.node.id} node={selection.node} video={selectedVideo} />
 			)}
 
 			{!loading && videos.length === 0 && banner === null ? (
