@@ -48,7 +48,7 @@ describe("LibraryScreen", () => {
 	});
 
 	it("lists public videos newest first with their status", async () => {
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		expect(await screen.findByText("a.mp4")).toBeInTheDocument();
 		expect(screen.getByText("Processing")).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("LibraryScreen", () => {
 	});
 
 	it("inserts a ready video on click, fetching its playback links first", async () => {
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		await userEvent.click(await screen.findByRole("button", { name: "Insert a.mp4" }));
 
@@ -67,20 +67,20 @@ describe("LibraryScreen", () => {
 	});
 
 	it("doesn't offer to insert a video that is still processing", async () => {
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 		await screen.findByText("b.mp4");
 		expect(screen.queryByRole("button", { name: "Insert b.mp4" })).toBeNull();
 	});
 
 	it("shows the empty state", async () => {
 		client.listVideos.mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 });
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 		expect(await screen.findByText("No public videos yet. Upload one.")).toBeInTheDocument();
 	});
 
 	it("hides the empty-library message while a banner is showing", async () => {
 		client.listVideos.mockRejectedValue(new TypeError("Failed to fetch"));
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		await screen.findByText("Can't reach Hyperserve. Check your connection.");
 		expect(screen.queryByText("No public videos yet. Upload one.")).toBeNull();
@@ -89,7 +89,7 @@ describe("LibraryScreen", () => {
 	it("sends the user back to Connect exactly once when the key has been revoked", async () => {
 		client.listVideos.mockRejectedValue(new HyperserveValidationError("Forbidden resource", 403, {}));
 		const onDisconnected = vi.fn();
-		render(<LibraryScreen apiKey="k" onDisconnected={onDisconnected} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={onDisconnected} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		await waitFor(() => expect(onDisconnected).toHaveBeenCalledWith("Your connection was removed. Connect again."));
 		expect(onDisconnected).toHaveBeenCalledTimes(1);
@@ -97,7 +97,7 @@ describe("LibraryScreen", () => {
 
 	it("disconnects on request and points to where the key can be revoked", async () => {
 		const onDisconnected = vi.fn();
-		render(<LibraryScreen apiKey="k" onDisconnected={onDisconnected} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={onDisconnected} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		const link = await screen.findByRole("link", { name: "Revoke the key on the API keys page" });
 		expect(link).toHaveAttribute("href", `${DASHBOARD_URL}/api-keys`);
@@ -109,7 +109,7 @@ describe("LibraryScreen", () => {
 	it("offers to load more while more videos exist on the server, and fetches the next page", async () => {
 		client.listVideos.mockResolvedValueOnce({ data: [listed("a", "ready")], total: 2, page: 1, limit: 1 });
 		client.listVideos.mockResolvedValueOnce({ data: [listed("b", "processing")], total: 2, page: 2, limit: 1 });
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		await screen.findByText("a.mp4");
 		expect(screen.queryByText("b.mp4")).toBeNull();
@@ -127,7 +127,7 @@ describe("LibraryScreen", () => {
 		client.listVideos.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 		client.listVideos.mockResolvedValueOnce({ data: [listed("a", "ready")], total: 1, page: 1, limit: 20 });
 
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 		await screen.findByText("a.mp4");
 
 		await userEvent.click(screen.getByRole("button", { name: "Load more" }));
@@ -152,8 +152,8 @@ describe("LibraryScreen", () => {
 		);
 		client.listVideos.mockResolvedValueOnce({ data: [listed("b", "ready")], total: 1, page: 1, limit: 20 });
 
-		const { rerender } = render(<LibraryScreen apiKey="k1" onDisconnected={vi.fn()} />);
-		rerender(<LibraryScreen apiKey="k2" onDisconnected={vi.fn()} />);
+		const { rerender } = render(<LibraryScreen apiKey="k1" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
+		rerender(<LibraryScreen apiKey="k2" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		expect(await screen.findByText("b.mp4")).toBeInTheDocument();
 
@@ -168,7 +168,7 @@ describe("LibraryScreen", () => {
 	});
 
 	it("shows no panel and doesn't crash when the selected layer is a video the plugin didn't insert", async () => {
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 		await screen.findByText("a.mp4");
 
 		await act(async () => {
@@ -181,7 +181,7 @@ describe("LibraryScreen", () => {
 	});
 
 	it("renders the selected video panel above the grid for a layer the plugin tagged", async () => {
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 		await screen.findByText("a.mp4");
 
 		await act(async () => {
@@ -196,7 +196,7 @@ describe("LibraryScreen", () => {
 	it("shows a retry banner when the network is unreachable, and retries on click", async () => {
 		client.listVideos.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 		client.listVideos.mockResolvedValueOnce({ data: [listed("a", "ready")], total: 1, page: 1, limit: 20 });
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		expect(await screen.findByText("Can't reach Hyperserve. Check your connection.")).toBeInTheDocument();
 		await userEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -208,7 +208,7 @@ describe("LibraryScreen", () => {
 		client.listVideos.mockRejectedValue(
 			new HyperserveValidationError("You have exceeded your free tier limits.", 403, { code: "FREE_TIER_EXCEEDED" }),
 		);
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		expect(await screen.findByText("You have exceeded your free tier limits.")).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Manage billing" })).toHaveAttribute("href", `${DASHBOARD_URL}/billing`);
@@ -218,14 +218,14 @@ describe("LibraryScreen", () => {
 		client.listVideos.mockRejectedValue(
 			new HyperserveValidationError("Your subscription is inactive.", 403, { code: "INACTIVE_SUBSCRIPTION" }),
 		);
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 
 		expect(await screen.findByText("Your subscription is inactive.")).toBeInTheDocument();
 		expect(screen.getByRole("link", { name: "Manage billing" })).toHaveAttribute("href", `${DASHBOARD_URL}/billing`);
 	});
 
 	it("toggles the upload panel from the header", async () => {
-		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} overridden={false} onUseDifferentAccount={vi.fn()} />);
 		await screen.findByText("a.mp4");
 
 		expect(screen.queryByText("Videos uploaded here are public.")).toBeNull();
@@ -235,5 +235,18 @@ describe("LibraryScreen", () => {
 
 		await userEvent.click(toggle);
 		expect(screen.queryByText("Videos uploaded here are public.")).toBeNull();
+	});
+
+	it("offers a different account for this project", async () => {
+		const onUseDifferentAccount = vi.fn();
+		render(<LibraryScreen apiKey="k" overridden={false} onDisconnected={vi.fn()} onUseDifferentAccount={onUseDifferentAccount} />);
+
+		await userEvent.click(await screen.findByRole("button", { name: "Use a different account for this project" }));
+		expect(onUseDifferentAccount).toHaveBeenCalled();
+	});
+
+	it("says when this project uses its own account", async () => {
+		render(<LibraryScreen apiKey="k" overridden onDisconnected={vi.fn()} onUseDifferentAccount={vi.fn()} />);
+		expect(await screen.findByText("This project uses its own Hyperserve account.")).toBeInTheDocument();
 	});
 });

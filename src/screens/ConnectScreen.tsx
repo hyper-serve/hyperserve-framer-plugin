@@ -2,9 +2,15 @@ import { useRef, useState } from "react";
 import { DASHBOARD_URL } from "../config";
 import { type ConnectSession, startConnect, waitForApproval } from "../connect/connectFlow";
 
-type Props = { onConnected(apiKey: string): void; notice?: string };
+type Props = {
+	onConnected(apiKey: string): void;
+	notice?: string;
+	integrationUserId?: string;
+	heading?: string;
+	onCancel?(): void;
+};
 
-export function ConnectScreen({ onConnected, notice }: Props) {
+export function ConnectScreen({ onConnected, notice, integrationUserId, heading, onCancel }: Props) {
 	const [waiting, setWaiting] = useState<ConnectSession | null>(null);
 	const [message, setMessage] = useState<string | undefined>(notice);
 	const [pasting, setPasting] = useState(false);
@@ -14,7 +20,7 @@ export function ConnectScreen({ onConnected, notice }: Props) {
 	const connect = async () => {
 		setMessage(undefined);
 		try {
-			const session = await startConnect();
+			const session = await startConnect({ integrationUserId });
 			// May be blocked by the browser since it runs after an await; the
 			// waiting view also renders a link so the user can always get there.
 			window.open(session.connectUrl, "hyperserve-connect", "width=480,height=720");
@@ -29,6 +35,7 @@ export function ConnectScreen({ onConnected, notice }: Props) {
 			}
 			setWaiting(null);
 			if (result.kind === "denied_or_expired") setMessage("The connection wasn't approved in time. Try again.");
+			if (result.kind === "cancelled") onCancel?.();
 		} catch (error) {
 			setWaiting(null);
 			setMessage(error instanceof Error ? error.message : "Couldn't connect. Try again.");
@@ -53,7 +60,7 @@ export function ConnectScreen({ onConnected, notice }: Props) {
 
 	return (
 		<main className="stack">
-			<h1>Hyperserve</h1>
+			<h1>{heading ?? "Hyperserve"}</h1>
 			<p>Upload videos or pick ones you already host, and place them on your page.</p>
 			{message !== undefined && <p role="status">{message}</p>}
 			<button type="button" onClick={connect}>

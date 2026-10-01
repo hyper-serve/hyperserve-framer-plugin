@@ -1,34 +1,57 @@
-const STORAGE_KEY = "hyperserve.apiKey";
+const STORAGE_KEY = "hyperserve.accounts";
 
-export type KeyStore = { get(): string | null; set(key: string): void; clear(): void };
+type Accounts = { default: string | null; projects: Record<string, string> };
 
-// Framer recommends localStorage for per-user tokens. Some browsers block it in
-// iframes; then the key lasts for this session only.
+export type KeyStore = {
+	keyFor(projectId: string): string | null;
+	isOverridden(projectId: string): boolean;
+	connect(projectId: string, key: string, scope: "default" | "project"): void;
+	disconnect(projectId: string): void;
+};
+
+const empty = (): Accounts => ({ default: null, projects: {} });
+
+// Per browser, never in Framer project storage (collaborators can read that).
+// One default account for every project, with optional per-project overrides.
 export const createKeyStore = (): KeyStore => {
-	let memory: string | null = null;
+	let memory: Accounts = empty();
+
+	const read = (): Accounts => {
+		try {
+			const raw = localStorage.getItem(STORAGE_KEY);
+			if (raw === null) return memory;
+			const parsed = JSON.parse(raw) as Partial<Accounts>;
+			return { default: parsed.default ?? null, projects: parsed.projects ?? {} };
+		} catch {
+			return memory;
+		}
+	};
+
+	const write = (accounts: Accounts) => {
+		memory = accounts;
+		try {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+		} catch {
+			// memory only
+		}
+	};
+
 	return {
-		get() {
-			try {
-				return localStorage.getItem(STORAGE_KEY) ?? memory;
-			} catch {
-				return memory;
-			}
+		keyFor: (projectId) => {
+			const accounts = read();
+			return accounts.projects[projectId] ?? accounts.default;
 		},
-		set(key) {
-			memory = key;
-			try {
-				localStorage.setItem(STORAGE_KEY, key);
-			} catch {
-				// memory only
-			}
+		isOverridden: (projectId) => read().projects[projectId] !== undefined,
+		connect: (projectId, key, scope) => {
+			const accounts = read();
+			if (scope === "default") write({ ...accounts, default: key });
+			else write({ ...accounts, projects: { ...accounts.projects, [projectId]: key } });
 		},
-		clear() {
-			memory = null;
-			try {
-				localStorage.removeItem(STORAGE_KEY);
-			} catch {
-				// nothing stored
-			}
+		disconnect: (projectId) => {
+			const accounts = read();
+			const { [projectId]: override, ...projects } = accounts.projects;
+			if (override !== undefined) return write({ ...accounts, projects });
+			write({ ...accounts, default: null });
 		},
 	};
 };

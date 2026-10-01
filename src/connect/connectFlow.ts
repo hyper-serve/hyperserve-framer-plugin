@@ -28,12 +28,15 @@ const sleepFor = (ms: number, signal: AbortSignal) =>
 		signal.addEventListener("abort", onAbort, { once: true });
 	});
 
-export async function startConnect(deps: { fetch?: typeof fetch; baseUrl?: string } = {}) {
+export async function startConnect(deps: { integrationUserId?: string; fetch?: typeof fetch; baseUrl?: string } = {}) {
 	const fetchFn = deps.fetch ?? fetch;
 	const res = await fetchFn(`${deps.baseUrl ?? API_BASE_URL}/connect/sessions`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ integration: "framer" }),
+		body: JSON.stringify({
+			integration: "framer",
+			...(deps.integrationUserId !== undefined && { integrationUserId: deps.integrationUserId }),
+		}),
 	});
 	const body = await res.json().catch(() => ({}));
 	if (!res.ok) throw new Error(body.message ?? "Couldn't start connecting. Try again.");

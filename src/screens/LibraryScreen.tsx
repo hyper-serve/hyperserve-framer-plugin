@@ -9,7 +9,12 @@ import { dragDataFor, insertVideo, tagDroppedNode } from "../video/canvas";
 import { SelectedVideoPanel } from "./SelectedVideoPanel";
 import { UploadPanel } from "./UploadPanel";
 
-type Props = { apiKey: string; onDisconnected(notice?: string): void };
+type Props = {
+	apiKey: string;
+	overridden: boolean;
+	onDisconnected(notice?: string): void;
+	onUseDifferentAccount(): void;
+};
 
 type Banner = { kind: "limit"; message: string } | { kind: "network" } | { kind: "unknown"; message: string };
 
@@ -23,7 +28,7 @@ const STATUS_LABEL: Record<ListedVideo["status"], string> = {
 	fail: "Failed",
 };
 
-export function LibraryScreen({ apiKey, onDisconnected }: Props) {
+export function LibraryScreen({ apiKey, overridden, onDisconnected, onUseDifferentAccount }: Props) {
 	const client = useMemo(() => makeClient(apiKey), [apiKey]);
 	const [videos, setVideos] = useState<ListedVideo[]>([]);
 	const [total, setTotal] = useState(0);
@@ -160,6 +165,10 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 					<a href={`${DASHBOARD_URL}/api-keys`} target="_blank" rel="noreferrer">
 						Revoke the key on the API keys page
 					</a>
+					{overridden && <p>This project uses its own Hyperserve account.</p>}
+					<button type="button" className="link" onClick={onUseDifferentAccount}>
+						Use a different account for this project
+					</button>
 				</nav>
 			</header>
 

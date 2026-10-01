@@ -28,6 +28,13 @@ describe("startConnect", () => {
 		const fetchFn = vi.fn(async () => reply(429, { message: "Too many requests" }));
 		await expect(startConnect({ fetch: fetchFn })).rejects.toThrow("Too many requests");
 	});
+
+	it("sends the Framer user id when given", async () => {
+		const fetchFn = vi.fn(async () => reply(201, session));
+		await startConnect({ fetch: fetchFn, integrationUserId: "fu1" });
+		const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+		expect(JSON.parse(init.body as string)).toEqual({ integration: "framer", integrationUserId: "fu1" });
+	});
 });
 
 describe("waitForApproval", () => {
