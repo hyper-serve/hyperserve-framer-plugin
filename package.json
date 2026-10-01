@@ -13,8 +13,8 @@
     "pack": "npx framer-plugin-tools@latest pack"
   },
   "dependencies": {
+    "@framer/plugin": "^5.1.0",
     "@hyperserve/hyperserve-js": "file:vendor/hyperserve-js-list-videos-c1d6344.tgz",
-    "framer-plugin": "^3.10.3",
     "react": "^18",
     "react-dom": "^18",
     "vite-plugin-mkcert": "^1"

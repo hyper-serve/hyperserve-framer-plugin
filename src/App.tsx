@@ -1,4 +1,4 @@
-import { framer, type CanvasNode, useIsAllowedTo } from "framer-plugin"
+import { framer, type CanvasNode, useIsAllowedTo } from "@framer/plugin"
 import { useState, useEffect } from "react"
 import "./App.css"
 
