@@ -1,5 +1,5 @@
 import type { HyperserveClient, VideoResolution } from "@hyperserve/hyperserve-js";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DASHBOARD_URL } from "../config";
 import { insertVideo } from "../video/canvas";
 import { DEFAULT_RESOLUTIONS, type UploadEvent, UPLOAD_RESOLUTIONS, runUpload } from "../upload/uploadFlow";
@@ -10,11 +10,22 @@ type Props = {
 	onError(error: unknown): void;
 };
 
+type ReadyVideo = Extract<UploadEvent, { phase: "ready" }>["video"];
+
 export function UploadPanel({ client, onDone, onError }: Props) {
 	const [file, setFile] = useState<File | null>(null);
 	const [checked, setChecked] = useState<Set<VideoResolution>>(new Set(DEFAULT_RESOLUTIONS));
 	const [event, setEvent] = useState<UploadEvent | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const abortRef = useRef<AbortController | null>(null);
+
+	// Leaving the panel (closing it, or the plugin window) must not let a
+	// background poll keep running or call back into an unmounted component.
+	useEffect(() => {
+		return () => {
+			abortRef.current?.abort();
+		};
+	}, []);
 
 	const resolutions = UPLOAD_RESOLUTIONS.filter((r) => checked.has(r));
 	const disabled = file === null || resolutions.length === 0 || submitting;
@@ -33,6 +44,9 @@ export function UploadPanel({ client, onDone, onError }: Props) {
 		setSubmitting(true);
 		setEvent(null);
 		const controller = new AbortController();
+		abortRef.current = controller;
+		let readyVideo: ReadyVideo | null = null;
+
 		try {
 			await runUpload({
 				client,
@@ -40,19 +54,24 @@ export function UploadPanel({ client, onDone, onError }: Props) {
 				resolutions,
 				signal: controller.signal,
 				onEvent: (next) => {
+					if (controller.signal.aborted) return;
 					setEvent(next);
-					if (next.phase === "ready") {
-						void (async () => {
-							await insertVideo(next.video);
-							onDone();
-						})();
-					}
+					if (next.phase === "ready") readyVideo = next.video;
 				},
 			});
+			if (controller.signal.aborted) return;
+			// Insert inside the same try as the upload itself, so a failure here
+			// (not just a failure in runUpload) is reported through onError too.
+			if (readyVideo !== null) {
+				await insertVideo(readyVideo);
+				onDone();
+			}
 		} catch (error) {
+			if (controller.signal.aborted) return;
+			setEvent(null);
 			onError(error);
 		} finally {
-			setSubmitting(false);
+			if (!controller.signal.aborted) setSubmitting(false);
 		}
 	};
 
@@ -61,21 +80,13 @@ export function UploadPanel({ client, onDone, onError }: Props) {
 			<p>Videos uploaded here are public.</p>
 			<label>
 				Video file
-				<input
-					type="file"
-					accept="video/*"
-					onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-				/>
+				<input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
 			</label>
 			<fieldset className="stack">
 				<legend>Resolutions</legend>
 				{UPLOAD_RESOLUTIONS.map((resolution) => (
 					<label key={resolution}>
-						<input
-							type="checkbox"
-							checked={checked.has(resolution)}
-							onChange={() => toggle(resolution)}
-						/>
+						<input type="checkbox" checked={checked.has(resolution)} onChange={() => toggle(resolution)} />
 						{resolution}
 					</label>
 				))}
@@ -83,9 +94,7 @@ export function UploadPanel({ client, onDone, onError }: Props) {
 			<button type="button" onClick={() => void upload()} disabled={disabled}>
 				Upload
 			</button>
-			{event?.phase === "uploading" && (
-				<progress aria-label="Upload progress" value={event.percent} max={100} />
-			)}
+			{event?.phase === "uploading" && <progress aria-label="Upload progress" value={event.percent} max={100} />}
 			{event?.phase === "processing" && <p>Processing</p>}
 			{event?.phase === "failed" && (
 				<p>

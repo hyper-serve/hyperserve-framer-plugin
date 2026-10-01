@@ -11,7 +11,7 @@ import { UploadPanel } from "./UploadPanel";
 
 type Props = { apiKey: string; onDisconnected(notice?: string): void };
 
-type Banner = { kind: "limit" } | { kind: "network" } | { kind: "unknown"; message: string };
+type Banner = { kind: "limit"; message: string } | { kind: "network" } | { kind: "unknown"; message: string };
 
 const PAGE_SIZE = 20;
 const FALLBACK_DRAG_DATA = { type: "componentInstance" as const, url: VIDEO_MODULE_URL };
@@ -36,6 +36,7 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 	const cacheRef = useRef<Record<string, VideoResult>>({});
 	const elementsRef = useRef<Record<string, HTMLElement>>({});
 	const draggableRef = useRef<Set<string>>(new Set());
+	const loadRequestRef = useRef(0);
 
 	const selection = useSelectedHyperserveVideo();
 
@@ -46,7 +47,7 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 			return;
 		}
 		if (mapped.kind === "limit") {
-			setBanner({ kind: "limit" });
+			setBanner({ kind: "limit", message: mapped.message });
 			return;
 		}
 		if (mapped.kind === "network") {
@@ -57,17 +58,22 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 	};
 
 	const load = async (nextPage: number, append: boolean) => {
+		const requestId = ++loadRequestRef.current;
 		setLoading(true);
 		try {
 			const result = await client.listVideos({ visibility: "public", page: nextPage, limit: PAGE_SIZE });
+			// A newer load may have started and already finished while this one
+			// was in flight; don't let a late, stale response overwrite it.
+			if (requestId !== loadRequestRef.current) return;
 			setVideos((prev) => (append ? [...prev, ...result.data] : result.data));
 			setTotal(result.total);
 			setPage(result.page);
 			setBanner(null);
 		} catch (error) {
+			if (requestId !== loadRequestRef.current) return;
 			handleError(error);
 		} finally {
-			setLoading(false);
+			if (requestId === loadRequestRef.current) setLoading(false);
 		}
 	};
 
@@ -170,8 +176,8 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 
 			{banner?.kind === "limit" && (
 				<p role="alert">
-					Your account is over its free limit. Uploads are paused and videos may not play on your site until you
-					upgrade. <a href={`${DASHBOARD_URL}/billing`} target="_blank" rel="noreferrer">
+					{banner.message}{" "}
+					<a href={`${DASHBOARD_URL}/billing`} target="_blank" rel="noreferrer">
 						Manage billing
 					</a>
 				</p>
@@ -179,7 +185,7 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 			{banner?.kind === "network" && (
 				<p role="alert">
 					Can't reach Hyperserve. Check your connection.{" "}
-					<button type="button" onClick={() => void load(page, false)}>
+					<button type="button" onClick={() => void load(1, false)}>
 						Retry
 					</button>
 				</p>
@@ -187,10 +193,10 @@ export function LibraryScreen({ apiKey, onDisconnected }: Props) {
 			{banner?.kind === "unknown" && <p role="alert">{banner.message}</p>}
 
 			{selection !== null && selectedVideo !== null && (
-				<SelectedVideoPanel node={selection.node} video={selectedVideo} />
+				<SelectedVideoPanel key={selection.videoId} node={selection.node} video={selectedVideo} />
 			)}
 
-			{!loading && videos.length === 0 ? (
+			{!loading && videos.length === 0 && banner === null ? (
 				<p>No public videos yet. Upload one.</p>
 			) : (
 				<div className="grid">

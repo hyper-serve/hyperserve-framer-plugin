@@ -2,6 +2,7 @@ import { HyperserveValidationError } from "@hyperserve/hyperserve-js";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { UploadEvent } from "../upload/uploadFlow";
 
 const runUpload = vi.fn();
 vi.mock("../upload/uploadFlow", async (orig) => ({ ...(await orig<object>()), runUpload }));
@@ -62,5 +63,70 @@ describe("UploadPanel", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Upload" }));
 
 		await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(error));
+	});
+
+	it("aborts the in-flight upload on unmount: no further status polls, and no onError/onDone", async () => {
+		const pollStatus = vi.fn();
+		let capturedSignal: AbortSignal | undefined;
+		runUpload.mockImplementation(
+			async ({ signal, onEvent }: { signal: AbortSignal; onEvent: (event: UploadEvent) => void }) => {
+				capturedSignal = signal;
+				onEvent({ phase: "uploading", percent: 0 });
+				onEvent({ phase: "processing" });
+				// Keeps "returning processing" until the signal says to stop, like the
+				// real poll loop in runUpload.
+				while (!signal.aborted) {
+					pollStatus();
+					await new Promise((resolve) => setTimeout(resolve, 0));
+				}
+			},
+		);
+		const onDone = vi.fn();
+		const onError = vi.fn();
+		const { unmount } = render(<UploadPanel client={{} as never} onDone={onDone} onError={onError} />);
+
+		await userEvent.upload(screen.getByLabelText("Video file"), file);
+		await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+		await screen.findByText("Processing");
+		await vi.waitFor(() => expect(pollStatus.mock.calls.length).toBeGreaterThan(0));
+
+		const callsBeforeUnmount = pollStatus.mock.calls.length;
+		unmount();
+
+		expect(capturedSignal?.aborted).toBe(true);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(pollStatus).toHaveBeenCalledTimes(callsBeforeUnmount);
+		expect(onDone).not.toHaveBeenCalled();
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	it("passes an insertVideo failure to onError, without calling onDone", async () => {
+		insertVideo.mockRejectedValueOnce(new Error("insert failed"));
+		runUpload.mockImplementation(async ({ onEvent }) => onEvent({ phase: "ready", video: { id: "v1" } }));
+		const onDone = vi.fn();
+		const onError = vi.fn();
+		render(<UploadPanel client={{} as never} onDone={onDone} onError={onError} />);
+
+		await userEvent.upload(screen.getByLabelText("Video file"), file);
+		await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+		await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.any(Error)));
+		expect(onDone).not.toHaveBeenCalled();
+	});
+
+	it("clears the progress state when the upload throws, so no frozen bar is left behind", async () => {
+		runUpload.mockImplementation(async ({ onEvent }) => {
+			onEvent({ phase: "uploading", percent: 70 });
+			throw new Error("boom");
+		});
+		const onError = vi.fn();
+		render(<UploadPanel client={{} as never} onDone={vi.fn()} onError={onError} />);
+
+		await userEvent.upload(screen.getByLabelText("Video file"), file);
+		await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+		await vi.waitFor(() => expect(onError).toHaveBeenCalled());
+		expect(screen.queryByRole("progressbar")).toBeNull();
 	});
 });

@@ -2,7 +2,7 @@ import { HyperserveValidationError } from "@hyperserve/hyperserve-js";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { videoControls } from "../config";
+import { DASHBOARD_URL, videoControls } from "../config";
 import { createFramerMock, makeNode } from "../test/framerMock";
 
 // Matches VIDEO_ID_KEY in ../video/canvas; a plain import would load that
@@ -16,7 +16,10 @@ vi.mock("@framer/plugin", () => ({
 }));
 
 const client = { listVideos: vi.fn(), getVideo: vi.fn(), getVideoStatus: vi.fn(), createVideo: vi.fn(), completeUpload: vi.fn() };
-vi.mock("../api/client", () => ({ makeClient: () => client }));
+// A fresh object per call (same underlying spies) so a changed apiKey produces a
+// new `client` reference, the way the real makeClient(apiKey) would; this lets a
+// test exercise the "key changed mid-flight" race (see the stale-response test).
+vi.mock("../api/client", () => ({ makeClient: () => ({ ...client }) }));
 
 const { LibraryScreen } = await import("./LibraryScreen");
 
@@ -75,19 +78,31 @@ describe("LibraryScreen", () => {
 		expect(await screen.findByText("No public videos yet. Upload one.")).toBeInTheDocument();
 	});
 
-	it("sends the user back to Connect when the key has been revoked", async () => {
+	it("hides the empty-library message while a banner is showing", async () => {
+		client.listVideos.mockRejectedValue(new TypeError("Failed to fetch"));
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+
+		await screen.findByText("Can't reach Hyperserve. Check your connection.");
+		expect(screen.queryByText("No public videos yet. Upload one.")).toBeNull();
+	});
+
+	it("sends the user back to Connect exactly once when the key has been revoked", async () => {
 		client.listVideos.mockRejectedValue(new HyperserveValidationError("Forbidden resource", 403, {}));
 		const onDisconnected = vi.fn();
 		render(<LibraryScreen apiKey="k" onDisconnected={onDisconnected} />);
 
 		await waitFor(() => expect(onDisconnected).toHaveBeenCalledWith("Your connection was removed. Connect again."));
+		expect(onDisconnected).toHaveBeenCalledTimes(1);
 	});
 
 	it("disconnects on request and points to where the key can be revoked", async () => {
 		const onDisconnected = vi.fn();
 		render(<LibraryScreen apiKey="k" onDisconnected={onDisconnected} />);
 
-		await userEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+		const link = await screen.findByRole("link", { name: "Revoke the key on the API keys page" });
+		expect(link).toHaveAttribute("href", `${DASHBOARD_URL}/api-keys`);
+
+		await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 		expect(onDisconnected).toHaveBeenCalledWith();
 	});
 
@@ -104,6 +119,52 @@ describe("LibraryScreen", () => {
 		expect(await screen.findByText("b.mp4")).toBeInTheDocument();
 		expect(client.listVideos).toHaveBeenLastCalledWith({ visibility: "public", page: 2, limit: 20 });
 		expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+	});
+
+	it("retrying after a load-more failure restarts the list from page 1, not the failed page", async () => {
+		client.listVideos.mockResolvedValueOnce({ data: [listed("a", "ready")], total: 3, page: 1, limit: 1 });
+		client.listVideos.mockResolvedValueOnce({ data: [listed("b", "processing")], total: 3, page: 2, limit: 1 });
+		client.listVideos.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+		client.listVideos.mockResolvedValueOnce({ data: [listed("a", "ready")], total: 1, page: 1, limit: 20 });
+
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+		await screen.findByText("a.mp4");
+
+		await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+		await screen.findByText("b.mp4");
+
+		await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+		await screen.findByRole("button", { name: "Retry" });
+
+		await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+		await waitFor(() => expect(client.listVideos).toHaveBeenLastCalledWith({ visibility: "public", page: 1, limit: 20 }));
+	});
+
+	it("ignores a stale list response that resolves after a newer one (key changed mid-flight)", async () => {
+		let resolveFirst: (value: { data: ReturnType<typeof listed>[]; total: number; page: number; limit: number }) => void =
+			() => {};
+		client.listVideos.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveFirst = resolve;
+				}),
+		);
+		client.listVideos.mockResolvedValueOnce({ data: [listed("b", "ready")], total: 1, page: 1, limit: 20 });
+
+		const { rerender } = render(<LibraryScreen apiKey="k1" onDisconnected={vi.fn()} />);
+		rerender(<LibraryScreen apiKey="k2" onDisconnected={vi.fn()} />);
+
+		expect(await screen.findByText("b.mp4")).toBeInTheDocument();
+
+		await act(async () => {
+			resolveFirst({ data: [listed("a", "ready")], total: 1, page: 1, limit: 20 });
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(screen.queryByText("a.mp4")).toBeNull();
+		expect(screen.getByText("b.mp4")).toBeInTheDocument();
 	});
 
 	it("shows no panel and doesn't crash when the selected layer is a video the plugin didn't insert", async () => {
@@ -143,22 +204,24 @@ describe("LibraryScreen", () => {
 		expect(await screen.findByText("a.mp4")).toBeInTheDocument();
 	});
 
-	it("shows a limit banner with a billing link when the account is over its free tier", async () => {
+	it("shows the server's own message in the limit banner, with a billing link", async () => {
 		client.listVideos.mockRejectedValue(
 			new HyperserveValidationError("You have exceeded your free tier limits.", 403, { code: "FREE_TIER_EXCEEDED" }),
 		);
 		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
 
-		expect(
-			await screen.findByText(
-				"Your account is over its free limit. Uploads are paused and videos may not play on your site until you upgrade.",
-				{ exact: false },
-			),
-		).toBeInTheDocument();
-		expect(screen.getByRole("link", { name: "Manage billing" })).toHaveAttribute(
-			"href",
-			expect.stringContaining("/billing"),
+		expect(await screen.findByText("You have exceeded your free tier limits.")).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Manage billing" })).toHaveAttribute("href", `${DASHBOARD_URL}/billing`);
+	});
+
+	it("shows the server's own message for an inactive subscription too", async () => {
+		client.listVideos.mockRejectedValue(
+			new HyperserveValidationError("Your subscription is inactive.", 403, { code: "INACTIVE_SUBSCRIPTION" }),
 		);
+		render(<LibraryScreen apiKey="k" onDisconnected={vi.fn()} />);
+
+		expect(await screen.findByText("Your subscription is inactive.")).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Manage billing" })).toHaveAttribute("href", `${DASHBOARD_URL}/billing`);
 	});
 
 	it("toggles the upload panel from the header", async () => {
